@@ -245,6 +245,10 @@ def _is_apertus2509(ctx):
     return ctx.has_vocab("<|inner_prefix|>")
 
 
+def _is_apertus2608(ctx):
+    return ctx.has_vocab("<|inner_prefix|>") and ctx.has_vocab("<|tool_output_start|>")
+
+
 def _is_gemma4(ctx):
     return ctx.has_text("<|channel>")
 
@@ -463,6 +467,9 @@ REASONING_PARSER_RULES = (
 # ---------------------------------------------------------------------------
 
 TOOL_CALL_PARSER_RULES = (
+    # apertus2608 must come before apertus2509: v1.5 tokenizers also satisfy
+    # the 2509 predicate, and the first matching rule wins.
+    DetectionRule(name="apertus2608", value="apertus2608", predicate=_is_apertus2608),
     DetectionRule(name="apertus2509", value="apertus2509", predicate=_is_apertus2509),
     DetectionRule(name="gemma4", value="gemma4", predicate=_is_gemma4),
     DetectionRule(name="gpt_oss", value="gpt-oss", predicate=_is_gpt_oss),

@@ -172,6 +172,7 @@ class HelionKDAKernel(LinearAttnKernelBase):
         dt_bias: torch.Tensor | None = None,
         lower_bound: float | None = None,
         return_intermediate_states: bool = False,
+        beta_is_raw: bool = False,
         **kwargs,
     ) -> torch.Tensor:
         assert self._chunk_kda is not None
@@ -189,6 +190,7 @@ class HelionKDAKernel(LinearAttnKernelBase):
             dt_bias=dt_bias,
             lower_bound=lower_bound,
             output_intermediate_states=return_intermediate_states,
+            beta_is_raw=beta_is_raw,
             track_state=kwargs.get("track_state"),
             track_chunk_idx=kwargs.get("track_chunk_idx"),
         )

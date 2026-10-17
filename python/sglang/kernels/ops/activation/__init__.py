@@ -316,8 +316,17 @@ def situ_and_mul(
     return impl(input, out, beta, linear_beta)
 
 
+def sssglu_and_mul(
+    input: torch.Tensor, out: Optional[torch.Tensor] = None
+) -> torch.Tensor:
+    from .sssglu import sssglu_and_mul as impl
+
+    return impl(input, out)
+
+
 __all__ = [
     "situ_and_mul",
+    "sssglu_and_mul",
     "SiluAndMulOp",
     "GeluAndMulOp",
     "GeluTanhAndMulOp",
@@ -351,5 +360,14 @@ register_kernel(
         backend=KernelBackend.JIT,
         target="sglang.kernels.ops.activation._jit_situ_and_mul:situ_and_mul",
         capabilities=frozenset({CapabilityRequirement.CUDA}),
+    )
+)
+
+register_kernel(
+    KernelSpec(
+        op="activation.sssglu_and_mul",
+        backend=KernelBackend.TRITON,
+        target="sglang.kernels.ops.activation.sssglu:sssglu_and_mul",
+        capabilities=_CUDA_HIP,
     )
 )

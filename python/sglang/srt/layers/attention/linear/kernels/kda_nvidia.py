@@ -261,8 +261,10 @@ class NvidiaKDAKernel(LinearAttnKernelBase):
             and track_h_src is not None
             and track_h_src.numel() > 0
         )
+        # The native NVIDIA interface expects already activated beta.
         eligible = (
-            not needs_interior_snapshot
+            not kwargs.get("beta_is_raw", False)
+            and not needs_interior_snapshot
             and not kwargs.get("is_spec_decode")
             and seq_lens_cpu is not None
             and len(seq_lens_cpu) > 1

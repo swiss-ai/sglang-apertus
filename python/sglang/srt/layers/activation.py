@@ -220,6 +220,24 @@ class SituAndMul(BaseFusedOp):
         return self.forward_native(x)
 
 
+class SSSGLUAndMul(BaseFusedOp):
+    """Shifted softsign gated activation used by Apertus 2."""
+
+    def forward_native(self, x: torch.Tensor) -> torch.Tensor:
+        if x.ndim == 0 or x.shape[-1] % 2:
+            raise ValueError("SSSGLU requires an even last dimension")
+        gate, up = x.float().chunk(2, dim=-1)
+        return ((F.softsign(gate - 1.0) + 0.5) * up).to(x.dtype)
+
+    def forward_cuda(self, x: torch.Tensor) -> torch.Tensor:
+        from sglang.kernels.ops.activation import sssglu_and_mul
+
+        return sssglu_and_mul(x)
+
+    def forward_cpu(self, x: torch.Tensor) -> torch.Tensor:
+        return self.forward_native(x)
+
+
 class GeluAndMul(BaseFusedOp):
     def __init__(self, approximate="tanh"):
         super().__init__()

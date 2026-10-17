@@ -59,6 +59,11 @@ in the GitHub search bar.
       <td style={{padding: "9px 12px", backgroundColor: "rgba(255,255,255,0.02)"}}>OpenAI’s latest GPT-OSS series for complex reasoning, agentic tasks, and versatile developer use cases.</td>
     </tr>
     <tr>
+      <td style={{padding: "9px 12px", fontWeight: 500, backgroundColor: "rgba(255,255,255,0.02)"}}>Apertus 2 (full attention, KDA)</td>
+      <td style={{padding: "9px 12px", backgroundColor: "rgba(255,255,255,0.05)"}}>Local checkpoints with <code>Apertus2ForCausalLM</code> or <code>Apertus2KDAForCausalLM</code></td>
+      <td style={{padding: "9px 12px", backgroundColor: "rgba(255,255,255,0.02)"}}>Unquantized BF16 inference with SSSGLU activation. MoE checkpoints require <code>use_quantile_balancing=true</code> and ungrouped routing. Use <code>--tp-size 1 --moe-runner-backend triton</code>; DP and EP are unsupported. Pipeline parallelism distributes complete layers across GPUs.</td>
+    </tr>
+    <tr>
       <td style={{padding: "9px 12px", fontWeight: 500, backgroundColor: "rgba(255,255,255,0.02)"}}><strong>Qwen</strong> (3.5, 3, 3MoE, 3Next, 2.5, 2 series)</td>
       <td style={{padding: "9px 12px", backgroundColor: "rgba(255,255,255,0.05)"}}><code>Qwen/Qwen3.5-397B-A17B</code>, <code>Qwen/Qwen3-0.6B</code>, <code>Qwen/Qwen3-30B-A3B</code>, <code>Qwen/Qwen3-Next-80B-A3B-Instruct</code></td>
       <td style={{padding: "9px 12px", backgroundColor: "rgba(255,255,255,0.02)"}}>Alibaba’s latest Qwen3 series for complex reasoning, language understanding, and generation tasks; Support for MoE variants along with previous generation 2.5, 2, etc. <a href="../advanced_features/separate_reasoning">SGLang provides Qwen3 specific reasoning parser</a></td>

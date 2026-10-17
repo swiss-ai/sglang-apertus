@@ -772,6 +772,16 @@ def _fused_moe_kernel_sequence(
                 x = intermediate_cache1.view(-1, N)
                 d = x.shape[-1] // 2
                 intermediate_cache2.copy_(F.silu(x[..., :d]) * x[..., d:])
+    elif activation == "sssglu" and is_gated:
+        assert gemm1_alpha is None and gemm1_limit is None
+        x = intermediate_cache1.view(-1, N)
+        if _is_cuda or _is_hip:
+            from sglang.kernels.ops.activation import sssglu_and_mul
+
+            sssglu_and_mul(x, intermediate_cache2)
+        else:
+            gate, up = x.float().chunk(2, dim=-1)
+            intermediate_cache2.copy_((F.softsign(gate - 1.0) + 0.5) * up)
     elif activation == "situ" and is_gated:
         d = N // 2
         x = intermediate_cache1.view(-1, N)

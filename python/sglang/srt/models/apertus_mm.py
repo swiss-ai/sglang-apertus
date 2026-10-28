@@ -5,7 +5,7 @@
 
 import copy
 from collections.abc import Iterable
-from typing import Any, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -13,8 +13,7 @@ from torch import nn
 from transformers import (
     Apertus1p5Config,
     Apertus1p5VisionTokenizerModel,
-    AutoConfig,
-    AutoModel,
+    WavTokenizerEncoderModel,
 )
 
 from sglang.srt.layers.logits_processor import (
@@ -44,15 +43,6 @@ from sglang.srt.utils import add_prefix, flatten_nested_list
 
 _DEFAULT_IMAGE_TOKEN_OFFSET = 131272
 _DEFAULT_AUDIO_TOKEN_OFFSET = 262344
-
-
-def _init_component_model(
-    component_config: Any,
-    model_cls: type[nn.Module] | None = None,
-) -> nn.Module:
-    config_dict = component_config.to_dict()
-    config = AutoConfig.for_model(config_dict.pop("model_type"), **config_dict)
-    return AutoModel.from_config(config) if model_cls is None else model_cls(config)
 
 
 class _ApertusLogitsProcessor(LogitsProcessor):
@@ -112,11 +102,8 @@ class Apertus1p5ForConditionalGeneration(ApertusForCausalLM):
             # Both tokenizers assign discrete codes by nearest-neighbour/argmax.
             # Keeping them in fp32 is required for checkpoint parity.
             with set_default_torch_dtype(torch.float32):
-                self.vision_tower = _init_component_model(
-                    config.vision_tokenizer_config,
-                    model_cls=Apertus1p5VisionTokenizerModel,
-                )
-                self.audio_tower = _init_component_model(config.audio_tokenizer_config)
+                self.vision_tower = Apertus1p5VisionTokenizerModel(config.vision_config)
+                self.audio_tower = WavTokenizerEncoderModel(config.audio_config)
 
         self.image_token_offset = getattr(
             config, "image_token_offset", _DEFAULT_IMAGE_TOKEN_OFFSET
@@ -195,7 +182,9 @@ class Apertus1p5ForConditionalGeneration(ApertusForCausalLM):
             if image.dim() == 3:
                 image = image.unsqueeze(0)
             with torch.inference_mode():
-                codes = self.vision_tower.encode(image.to(device=device, dtype=dtype))
+                codes = self.vision_tower.encode(
+                    image.to(device=device, dtype=dtype)
+                ).image_tokens
             image_ids.append(codes.flatten().to(torch.long) + self.image_token_offset)
         return self._embed_code_ids(image_ids)
 
@@ -210,7 +199,8 @@ class Apertus1p5ForConditionalGeneration(ApertusForCausalLM):
                 continue
             with torch.inference_mode():
                 output = self.audio_tower.encode(
-                    audio.unsqueeze(0).unsqueeze(0).to(device=device, dtype=dtype)
+                    audio.unsqueeze(0).unsqueeze(0).to(device=device, dtype=dtype),
+                    return_dict=True,
                 )
             audio_ids.append(
                 output.audio_codes.squeeze(0).squeeze(0).to(torch.long)

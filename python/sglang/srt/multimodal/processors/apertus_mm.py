@@ -50,6 +50,8 @@ class Apertus1p5SGLangProcessor(SGLangBaseProcessor):
 
     def __init__(self, hf_config, server_args, _processor, *args, **kwargs):
         super().__init__(hf_config, server_args, _processor, *args, **kwargs)
+        # Match HF's CPU resizing and avoid passing device to the audio extractor.
+        self.disable_fast_image_processor = True
         self.mm_tokens = MultimodalSpecialTokens(
             image_token_id=getattr(
                 hf_config, "image_token_id", _DEFAULT_IMAGE_TOKEN_ID

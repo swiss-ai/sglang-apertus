@@ -286,6 +286,15 @@ def _is_apertus2509(ctx):
     return ctx.has_vocab("<|inner_prefix|>")
 
 
+def _is_apertus1p5(ctx):
+    return (
+        _is_apertus2509(ctx)
+        and ctx.has_vocab("<|inner_suffix|>")
+        and ctx.has_vocab("<|image|>")
+        and ctx.has_vocab("<|audio|>")
+    )
+
+
 def _is_gemma4(ctx):
     return ctx.has_text("<|channel>")
 
@@ -541,6 +550,7 @@ def _is_iquest_q1(ctx):
 REASONING_PARSER_RULES = (
     DetectionRule(name="iquest_q1", value="iquest_q1", predicate=_is_iquest_q1),
     DetectionRule(name="k2_horizon", value="k2_horizon", predicate=_is_k2_v3),
+    DetectionRule(name="apertus1p5", value="apertus1p5", predicate=_is_apertus1p5),
     DetectionRule(name="apertus2509", value="apertus2509", predicate=_is_apertus2509),
     DetectionRule(name="gemma4", value="gemma4", predicate=_is_gemma4),
     DetectionRule(name="kimi", value="kimi", predicate=_is_kimi),

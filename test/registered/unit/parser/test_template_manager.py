@@ -473,11 +473,19 @@ class TestTemplateDetectionRuleMatrix(unittest.TestCase):
     PARSER_RULES_MATRIX = [
         # (name, template_snippet, vocab, expected_parser, expected_toggle_param)
         (
-            "apertus2509_via_unique_vocab_token",
+            "apertus2509_via_reasoning_vocab",
             "{% set enable_thinking = enable_thinking if enable_thinking is defined else true %}\n",
-            ["<|inner_prefix|>"],
+            ["<|inner_prefix|>", "<|inner_suffix|>", "<think>", "</think>"],
             "apertus2509",
             "enable_thinking",
+        ),
+        (
+            "apertus1p5_via_multimodal_vocab",
+            "{% if enable_thinking is defined and enable_thinking %}enabled"
+            "{% else %}disabled{% endif %}",
+            ["<|inner_prefix|>", "<|inner_suffix|>", "<|image|>", "<|audio|>"],
+            "apertus1p5",
+            None,  # The detector supplies the default for this template.
         ),
         (
             "deepseek_r1_think_tags",

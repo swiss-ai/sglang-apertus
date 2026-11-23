@@ -48,6 +48,10 @@ class Apertus1p5SGLangProcessor(SGLangBaseProcessor):
         super().__init__(hf_config, server_args, _processor, *args, **kwargs)
         # Match HF's CPU resizing and avoid passing device to the audio extractor.
         self.disable_fast_image_processor = True
+        self.ATTR_NAME_TO_MODALITY.update(
+            {"input_values": Modality.AUDIO, "padding_mask": Modality.AUDIO}
+        )
+        self.FEATURE_NAMES.append("input_values")
         self.mm_tokens = MultimodalSpecialTokens(
             image_token_id=getattr(
                 hf_config, "image_token_id", _DEFAULT_IMAGE_TOKEN_ID
@@ -116,19 +120,17 @@ class Apertus1p5SGLangProcessor(SGLangBaseProcessor):
 
     @staticmethod
     def _normalize_audio_outputs(outputs: List[Dict]) -> Dict[str, List[torch.Tensor]]:
-        input_features = []
+        input_values = []
 
-        # Apertus1p5 input-processor from transformers pads audio features in a multimodal batch to a common length.
-        # Trim each item to its attention-mask length before encoding it.
+        # HF pads audio waveforms to a common length within each batch.
+        # Trim each item to its valid sample count before encoding it.
         for output in outputs:
-            input_features.extend(
+            input_values.extend(
                 audio[0, : int(mask.sum())].contiguous()
-                for audio, mask in zip(
-                    output["input_features"], output["feature_attention_mask"]
-                )
+                for audio, mask in zip(output["input_values"], output["padding_mask"])
             )
 
-        return {"input_features": input_features}
+        return {"input_values": input_values}
 
     def _get_delimited_mm_offsets(
         self,
@@ -229,17 +231,17 @@ class Apertus1p5SGLangProcessor(SGLangBaseProcessor):
                             ]
                         )["pixel_values"]
                     else:
-                        feature_attention_mask = bundled_item.model_specific_data.get(
-                            "feature_attention_mask"
+                        padding_mask = bundled_item.model_specific_data.get(
+                            "padding_mask"
                         )
                         payloads = self._normalize_audio_outputs(
                             [
                                 {
-                                    "input_features": bundled_item.feature,
-                                    "feature_attention_mask": feature_attention_mask,
+                                    "input_values": bundled_item.feature,
+                                    "padding_mask": padding_mask,
                                 }
                             ]
-                        )["input_features"]
+                        )["input_values"]
                 elif bundled_item.format == MultimodalInputFormat.PRECOMPUTED_EMBEDDING:
                     embeddings = bundled_item.precomputed_embeddings
                     if embeddings is None:
@@ -256,7 +258,7 @@ class Apertus1p5SGLangProcessor(SGLangBaseProcessor):
                     model_specific_data = dict(bundled_item.model_specific_data)
                     if bundled_item.format == MultimodalInputFormat.PROCESSOR_OUTPUT:
                         model_specific_data.pop("image_sizes", None)
-                        model_specific_data.pop("feature_attention_mask", None)
+                        model_specific_data.pop("padding_mask", None)
                     is_precomputed = (
                         bundled_item.format
                         == MultimodalInputFormat.PRECOMPUTED_EMBEDDING

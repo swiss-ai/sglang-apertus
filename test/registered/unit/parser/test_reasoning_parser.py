@@ -1,7 +1,9 @@
 """Unit tests for srt/parser/reasoning_parser.py"""
 
 import unittest
+from unittest.mock import Mock
 
+from sglang.srt.entrypoints.openai.protocol import ChatCompletionRequest
 from sglang.srt.parser.reasoning_parser import (
     Apertus2509Detector,
     BaseReasoningFormatDetector,
@@ -627,6 +629,142 @@ class TestNemotron3Detector(CustomTestCase):
         self.assertNotIn(detector.think_start_token, end.normal_text)
 
 
+class TestApertus1p5Detector(CustomTestCase):
+    @staticmethod
+    def make_tokenizer(vocab):
+        tokenizer = Mock(unk_token_id=0)
+        tokenizer.convert_tokens_to_ids.side_effect = lambda tokens: [
+            vocab.get(token, tokenizer.unk_token_id) for token in tokens
+        ]
+        return tokenizer
+
+    def test_select_emitted_token_pair(self):
+        inner = ("<|inner_prefix|>", "<|inner_suffix|>")
+        think = ("<think>", "</think>")
+        cases = [
+            ({inner[0]: 32, inner[1]: 33}, inner),
+            ({think[0]: 32, think[1]: 33}, think),
+            ({inner[0]: 32, inner[1]: 33, think[0]: 100, think[1]: 101}, inner),
+            ({inner[0]: 100, inner[1]: 101, think[0]: 32, think[1]: 33}, think),
+            ({inner[0]: 1, think[0]: 32, think[1]: 33}, think),
+            (None, inner),
+        ]
+        for vocab, expected in cases:
+            with self.subTest(vocab=vocab):
+                tokenizer = self.make_tokenizer(vocab) if vocab is not None else None
+                parser = ReasoningParser("apertus1p5", tokenizer=tokenizer)
+                self.assertEqual(
+                    (
+                        parser.detector.think_start_token,
+                        parser.detector.think_end_token,
+                    ),
+                    expected,
+                )
+                self.assertEqual(
+                    parser.parse_non_stream(
+                        expected[0] + "reason" + expected[1] + "answer"
+                    ),
+                    ("reason", "answer"),
+                )
+
+    def test_reasoning_and_tool_handoff_across_chunk_boundaries(self):
+        tokenizer = self.make_tokenizer({"<think>": 32, "</think>": 33})
+        call = '<|tools_prefix|>[{"lookup":{"text":"<think>literal</think>"}}]<|tools_suffix|>'
+        cases = (
+            ("<think>reason</think>answer", ("reason", "answer")),
+            ("<think>reason" + call, ("reason", call)),
+            (call, ("", call)),
+        )
+        for text, expected in cases:
+            parser = ReasoningParser("apertus1p5", tokenizer=tokenizer)
+            self.assertEqual(parser.parse_non_stream(text), expected)
+            for stream_reasoning in (True, False):
+                for boundary in range(len(text) + 1):
+                    with self.subTest(
+                        text=text, boundary=boundary, stream_reasoning=stream_reasoning
+                    ):
+                        parser = ReasoningParser(
+                            "apertus1p5",
+                            stream_reasoning=stream_reasoning,
+                            tokenizer=tokenizer,
+                        )
+                        parts = (
+                            parser.parse_stream_chunk(text[:boundary]),
+                            parser.parse_stream_chunk(text[boundary:]),
+                            parser.parse_stream_end(),
+                        )
+                        self.assertEqual(
+                            tuple("".join(part[i] for part in parts) for i in range(2)),
+                            expected,
+                        )
+
+    def test_truncated_reasoning_flushes_when_buffered(self):
+        parser = ReasoningParser("apertus1p5", stream_reasoning=False)
+        self.assertEqual(
+            parser.parse_stream_chunk("<|inner_prefix|>reason<|inne"), ("", "")
+        )
+        self.assertEqual(parser.parse_stream_end(), ("reason<|inne", ""))
+        self.assertEqual(parser.parse_stream_end(), ("", ""))
+
+    def test_closing_marker_without_an_opening_marker(self):
+        parser = ReasoningParser("apertus1p5")
+        self.assertEqual(
+            parser.parse_non_stream("reason<|inner_suffix|>answer"),
+            ("reason", "answer"),
+        )
+        self.assertEqual(parser.parse_stream_chunk("reason<|inner_s"), ("", "reason"))
+        self.assertEqual(parser.parse_stream_chunk("uffix|>answer"), ("", "answer"))
+
+    def test_post_tool_answer_streams_once_with_thinking_enabled(self):
+        request = ChatCompletionRequest(
+            model="swiss-ai/Apertus-v1.5-8B",
+            messages=[
+                {"role": "tool", "content": "tool result", "tool_call_id": "call_1"}
+            ],
+            chat_template_kwargs={"enable_thinking": True},
+        )
+        parser = ReasoningParser("apertus1p5", force_reasoning=True, request=request)
+        self.assertEqual(parser.detector.reasoning_default, "explicit_enable_thinking")
+        self.assertEqual(parser.parse_non_stream(" answer "), ("", " answer "))
+        self.assertEqual(parser.parse_stream_chunk(" answer "), ("", " answer "))
+        self.assertEqual(parser.parse_stream_end(), ("", ""))
+
+    def test_assistant_continuation_starts_inside_open_reasoning(self):
+        request = ChatCompletionRequest(
+            model="swiss-ai/Apertus-v1.5-8B",
+            messages=[{"role": "assistant", "content": "<|inner_prefix|>earlier"}],
+            continue_final_message=True,
+        )
+        parser = ReasoningParser("apertus1p5", request=request)
+        self.assertEqual(parser.parse_non_stream("more"), ("more", ""))
+        self.assertEqual(parser.parse_stream_chunk("more"), ("more", ""))
+        self.assertEqual(
+            parser.parse_stream_chunk("<|inner_suffix|>answer"), ("", "answer")
+        )
+
+    def test_assistant_continuation_after_reasoning_preserves_text(self):
+        cases = (
+            (
+                "<|inner_prefix|>earlier<|inner_suffix|>",
+                "quote <|inner_prefix|> in the answer",
+            ),
+            (
+                '<|tools_prefix|>[{"lookup":{"text":"<|inner_prefix|>',
+                '<|inner_suffix|>"}}]<|tools_suffix|>',
+            ),
+        )
+        for prefix, tail in cases:
+            with self.subTest(prefix=prefix):
+                request = ChatCompletionRequest(
+                    model="swiss-ai/Apertus-v1.5-8B",
+                    messages=[{"role": "assistant", "content": prefix}],
+                    continue_final_message=True,
+                )
+                parser = ReasoningParser("apertus1p5", request=request)
+                self.assertEqual(parser.parse_non_stream(tail), ("", tail))
+                self.assertEqual(parser.parse_stream_chunk(tail), ("", tail))
+
+
 class TestApertus2509DetectorForceNonempty(CustomTestCase):
     """force_nonempty_content swap on Apertus2509 (non-streaming, via base helper)."""
 
@@ -649,6 +787,16 @@ class TestApertus2509DetectorForceNonempty(CustomTestCase):
         result = detector.detect_and_parse(text)
         self.assertEqual(result.reasoning_text, "reason")
         self.assertEqual(result.normal_text, "answer")
+
+
+class TestApertus2509Compatibility(CustomTestCase):
+    def test_legacy_parser_uses_inner_delimiters(self):
+        parser = ReasoningParser("apertus2509")
+        self.assertIsInstance(parser.detector, Apertus2509Detector)
+        self.assertEqual(
+            parser.parse_non_stream("<|inner_prefix|>reason<|inner_suffix|>answer"),
+            ("reason", "answer"),
+        )
 
 
 class TestGemma4Detector(CustomTestCase):

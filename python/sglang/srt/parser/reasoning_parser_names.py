@@ -4,7 +4,6 @@
 """
 
 REASONING_PARSER_NAMES = [
-    "apertus1p5",
     "apertus2509",
     "beam",
     "deepseek-r1",
